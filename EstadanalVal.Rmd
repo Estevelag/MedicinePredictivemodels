@@ -1,0 +1,216 @@
+---
+title: "Generalized linear regression to Evaluate renal failure"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+library(readxl)
+path_data<-"BasedatosRegS.xlsx"
+df <- read_excel(path_data,col_names=TRUE)
+important_base_columns <-  c('year', 'month', 'Identificacion',
+       '1_Edad', '2_Sexo', '47_Peso_en_Kilogramos', '48_Talla_en_metros', '49_IMC',
+       '50_Presion_arterial_sistolica', '51_Presion_arterial_diastolica',
+       'EstadioRenal1', '61_Creatinina2_mg_dl',
+       '62_BUN2_mg_d', '63_Albúmina2',
+       '64_Glucemia2_mg_dl', '65_HbA1C2', '66_Calcio_mg_dl',
+       '69_Fosforo_mEq_L_l', '70_PTH_mg_dl', '71_Colesterol_Total_mg_dl',
+       '71.2 LDL colest', '72_Colesterol_HDL_mg_dl', '74_Hemoglobina_mg_dl',
+       'creatinina2_suero_exam',
+       'corrected_calculated_tfg', 'calculated_EstadioRenal2')#'Proteinuria g/dL' missing the 0
+colnames(df)
+
+```
+# Testing normality
+
+```{r}
+vec<-colnames(df)
+importantvecs<-c("1.Proteinuria1.g/L","2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad", "8.Sexo","9.Nivel.ingresos","11.Estado.civil","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","21.Albúmina2","22.Glucemia2.mg.dl","23.HbA1C2","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","39.Proteinuria2","40.Proteinuria3","42.Microalbuminuria2","44.Microalbuminuria3","45.ParcialOrina","tfg_before","tfg_change","tfgD_per_month_before","46.Corrected.TFG")
+
+vecsImp<-c("1.Proteinuria1.g/L","2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad", "8.Sexo","9.Nivel.ingresos","11.Estado.civil","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","19.Creatinina2.mg.dl","45.ParcialOrina","tfg_before","tfg_change","tfgD_per_month_before","46.Corrected.TFG")
+
+importantvecsNum<-c("Identificacion",'1.Proteinuria1.g/L',"2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","21.Albúmina2","22.Glucemia2.mg.dl","23.HbA1C2","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","tfg_before","tfg_change","tfgD_per_month_before","46.Corrected.TFG")# Only one sample in this columns "39.Proteinuria2","40.Proteinuria3","42.Microalbuminuria2","44.Microalbuminuria3"
+cat<-setdiff(vecsImp,importantvecsNum)
+ndf <- df[,importantvecsNum]
+
+
+```
+# only LDL colesterol is normal, therefore linear models shouldn't be implemented
+
+```{r}
+#sapply(ndf, class)# Every column is numeric
+colSums(!is.na(ndf))
+
+```
+
+
+# GEneralized linear models
+#seeing the response variable and estimateits family as first aproximation
+
+```{r}
+library(fitdistrplus)
+ #x <- na.omit(df$"46.Corrected.TFG")
+x <- df$"46.Corrected.TFG"[!is.na(df$"46.Corrected.TFG")]
+plotdist(x, histo=TRUE, demp=TRUE)
+descdist(x)
+```
+# It's like a gamma and a lognormal, but lets see better
+
+# Fitting which distribution goes with the response variable
+https://stats.stackexchange.com/questions/374452/family-of-glm-represents-the-distribution-of-the-response-variable-or-residuals
+
+```{r}
+
+library(gamlss.dist)
+library(gamlss.add)
+
+fit <- fitDist(x,try.gamlss = TRUE)
+
+summary(fit)
+fit$fits
+
+```
+
+# Preparing the data for a fit Imputing NA values with random forests:
+
+```{r}
+library(mice)
+
+dfTFG<-ndf[complete.cases(df$"46.Corrected.TFG"),]# Dataframe that is only complete TFGs
+# Imputing the data with midastouch
+
+colnames(dfTFG)<-c("Identificacion","Proteinuria_gL","Microalbuminuria_1","HbA1C_1","Creatinuria_1","Creatinina_1","Glucemia_1","Edad","Peso_Kg","Talla_m","IMC","Presion_Art_Sistolica","Presion_Art_Diastolica","Creatinina2_mg_dl","BUN1_mg_d","Albumina_2","Glucemia2_mg_dl","HbA1C2","Calcio_mg_dl","Fosforo_mEq_L_l","PTH_mg_dl","ColesterolTotal_mg_dl","LDLcolest","Colesterol_HDL_mg_dl","Hemoglobina_mg_dl","RCV_Rel_AlbuminuriaCreatinuria","creatinina3_mgdl","tfg_before","tfg_change","tfgD_per_month_before","Corrected_TFG")
+attach(dfTFG)
+imputed_data <-  mice(dfTFG, method="rf",print=FALSE)# Random forest method
+full_data <- complete(imputed_data) 
+
+#RCV_Rel_AlbuminuriaCreatinuria and tfgD_per_month_before cannot be imputed
+
+completecolumns <-c("Identificacion","Proteinuria_gL","Microalbuminuria_1","HbA1C_1","Creatinuria_1","Creatinina_1","Glucemia_1","Edad","Peso_Kg","Talla_m","IMC","Presion_Art_Sistolica","Presion_Art_Diastolica","Creatinina2_mg_dl","BUN1_mg_d","Albumina_2","Glucemia2_mg_dl","HbA1C2","Calcio_mg_dl","Fosforo_mEq_L_l","PTH_mg_dl","ColesterolTotal_mg_dl","LDLcolest","Colesterol_HDL_mg_dl","Hemoglobina_mg_dl","creatinina3_mgdl","tfg_before","tfg_change","Corrected_TFG")
+full_data <- full_data[,completecolumns]
+```
+
+# Generalized linear model with known distribution (It has to be an exponential function the response variable) as fitted above
+
+```{r}
+library(gamlss.dist)
+library(gamlss.add)
+library(gamlss)
+
+
+regglm <- gamlss(`Corrected_TFG` ~`Creatinina_1`+ Proteinuria_gL+Microalbuminuria_1+HbA1C_1+Creatinuria_1+Glucemia_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albumina_2+Glucemia2_mg_dl+HbA1C2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Colesterol_HDL_mg_dl+Hemoglobina_mg_dl+creatinina3_mgdl+tfg_before+tfg_change, data=full_data, family=BCPEo)
+summary(regglm)
+#compare the coeficcients, they are a little bit different
+regglm$coefficients
+plot(regglm)
+```
+# Adding a random effect per person: The family adjusted doesn't work, so we use nu.fix=TRUE
+
+```{r}
+regglmR <- gamlss(`Corrected_TFG` ~`Creatinina_1`+ Proteinuria_gL+Microalbuminuria_1+HbA1C_1+Creatinuria_1+Glucemia_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albumina_2+Glucemia2_mg_dl+HbA1C2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Colesterol_HDL_mg_dl+Hemoglobina_mg_dl+creatinina3_mgdl+tfg_before+tfg_change+random(factor(Identificacion)), data=full_data, family=BCPEo, nu.fix=TRUE)
+#plot(regglmR)# see the residuals
+#wp(regglmR) # http://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf page 127
+
+#compare the coeficcients, they are a little bit different
+
+## Seeing correlations of the variables
+```
+# The asumptions of the mixed effect didn't workout maybe by trying another family it could work or transforming the variables
+
+```{r}
+plot(regglmR)# see the residuals
+wp(regglmR)
+```
+
+
+
+# Generalized linear model with random mixed effects per person
+```{r}
+regglmMM <- gamlss(`Corrected_TFG` ~`Creatinina_1` + random(factor(Identificacion)) , data=full_data )
+# ,family=BCPEo doesnt work
+#family=BCPEo , opt="optim", numIter=100
+summary(regglmMM)
+#compare the coeficcients, they are a little bit different
+regglmMM$coefficients
+getSmo(regglmMM)
+```
+# To take out terms of the model with a ChiSquared test
+```{r}
+library(MASS)
+full_data<- subset(full_data, select = -c(Identificacion) )
+mod1<-gamlss(Corrected_TFG~., data=full_data, family=BCPEo)
+summary(mod1)
+#dropterm(mod1, test="Chisq") #  http://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf Page 138
+#addterm(mod1, scope=~.+(Proteinuria_gL+Edad+Creatinina_1+tfg_before+Microalbuminuria_1+BUN1_mg_d)^2, test="Chisq") #adding interaction terms
+
+# Final model
+mod2<-gamlss(`Corrected_TFG` ~`Creatinina_1`+Proteinuria_gL+Microalbuminuria_1+Edad+Peso_Kg+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albumina_2+Glucemia2_mg_dl+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+tfg_before+Microalbuminuria_1:Creatinina_1+BUN1_mg_d:tfg_before+Edad:tfg_before+Edad:BUN1_mg_d, data=full_data, family=BCPEo, control = gamlss.control(n.cyc = 400))
+#Testing if one takes them out and add interactions in one command
+
+plot(mod2)# see the residuals and check for assumptions
+wp(mod2) # check ranges of the validity of the model
+
+# To force converging one can try many more iterations by  adding: control = gamlss.control(n.cyc = 200)
+```
+
+# To compare models
+```{r}
+GAIC.table(mod1, mod2) 
+# Its better the new model
+```
+
+# One can even make a better model by transforming its independant variables with:
+5.1 Cubic splines, the cs() function . . . . . . . . . . . . . . . . . . . . . . . . . . . 96
+5.2 Varying coefficient, the vc() function . . . . . . . . . . . . . . . . . . . . . . . . 97
+5.3 Penalized splines, the ps() function . . . . . . . . . . . . . . . . . . . . . . . . . 102
+5.4 The loess function lo() . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 106
+5.5 Fractional polynomials, the fp() function
+
+# Validation metrics
+
+```{r}
+path_data<-"BasedatosRegVal.xlsx"
+df2 <- read_excel(path_data,col_names=TRUE)
+importantvecsNum<-c("Identificacion",'1.Proteinuria1.g/L',"2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","21.Albúmina2","22.Glucemia2.mg.dl","23.HbA1C2","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","tfg_before","tfg_change","tfgD_per_month_before","46.Corrected.TFG")
+ndf2 <- df2[,importantvecsNum]
+
+dfTFG2<-ndf2[complete.cases(ndf2$"46.Corrected.TFG"),]
+colnames(dfTFG2)<-c("Identificacion","Proteinuria_gL","Microalbuminuria_1","HbA1C_1","Creatinuria_1","Creatinina_1","Glucemia_1","Edad","Peso_Kg","Talla_m","IMC","Presion_Art_Sistolica","Presion_Art_Diastolica","Creatinina2_mg_dl","BUN1_mg_d","Albumina_2","Glucemia2_mg_dl","HbA1C2","Calcio_mg_dl","Fosforo_mEq_L_l","PTH_mg_dl","ColesterolTotal_mg_dl","LDLcolest","Colesterol_HDL_mg_dl","Hemoglobina_mg_dl","RCV_Rel_AlbuminuriaCreatinuria","creatinina3_mgdl","tfg_before","tfg_change","tfgD_per_month_before","Corrected_TFG")
+print(paste0("Número total de pacientes en validación: ",length(unique(dfTFG2$Identificacion))))
+attach(dfTFG2)
+numbers<-nrow(dfTFG2)
+dfTFG2<-rbind(dfTFG,dfTFG2)
+imputed_data <-  mice(dfTFG2, method="rf",print=FALSE)# Random forest method
+full_data2 <- complete(imputed_data) 
+completecolumns <-c("Identificacion","Proteinuria_gL","Microalbuminuria_1","HbA1C_1","Creatinuria_1","Creatinina_1","Glucemia_1","Edad","Peso_Kg","Talla_m","IMC","Presion_Art_Sistolica","Presion_Art_Diastolica","Creatinina2_mg_dl","BUN1_mg_d","Albumina_2","Glucemia2_mg_dl","HbA1C2","Calcio_mg_dl","Fosforo_mEq_L_l","PTH_mg_dl","ColesterolTotal_mg_dl","LDLcolest","Colesterol_HDL_mg_dl","Hemoglobina_mg_dl","creatinina3_mgdl","tfg_before","tfg_change","Corrected_TFG")
+response=full_data2[,c("Corrected_TFG")]
+full_data2 <- full_data2[,completecolumns]
+
+full_data2 <- tail(full_data2,n=numbers)
+full_data2$Identificacion<-NULL
+predicted <- predict(mod2, newdata=full_data2, type = "response")
+
+predicted<-tail(as.vector(predicted),n=numbers)
+response<-tail(as.vector(response),n=numbers)
+
+
+library(caret)
+library(Metrics)
+library(MLmetrics)
+# R native functions
+MAE(predicted, response)
+mse(predicted, response)
+ 
+# caret package functions 
+rmse(predicted, response)
+R2_Score(predicted, response)
+smape(response, predicted)
+```
+
+
+
+
+
+
+

@@ -1,0 +1,200 @@
+---
+title: "R Generalized linear regression to Evaluate Change of renal failure"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+library(readxl)
+path_data<-"BasedatosRegDerivS.xlsx" #To do a linear model of the change in the next measure
+df <- read_excel(path_data,col_names=TRUE)
+important_base_columns <-  c('year', 'month', 'Identificacion',
+       '1_Edad', '2_Sexo', '47_Peso_en_Kilogramos',
+       '48_Talla_en_metros', '49_IMC',
+       '50_Presion_arterial_sistolica', '51_Presion_arterial_diastolica',
+       'EstadioRenal1', '61_Creatinina2_mg_dl',
+       '62_BUN2_mg_d', '63_Albúmina2',
+       '64_Glucemia2_mg_dl', '65_HbA1C2', '66_Calcio_mg_dl',
+       '69_Fosforo_mEq_L_l', '70_PTH_mg_dl', '71_Colesterol_Total_mg_dl',
+       '71.2 LDL colest', '72_Colesterol_HDL_mg_dl', '74_Hemoglobina_mg_dl',
+       'creatinina2_suero_exam',
+       'corrected_calculated_tfg', 'calculated_EstadioRenal2')#'Proteinuria g/dL' missing the 0
+colnames(df)
+
+```
+
+# Processing important columns and testing normality
+
+```{r}
+vec<-colnames(df)
+importantvecs<-c("1.Proteinuria1.g/L","2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad", "8.Sexo","9.Nivel.ingresos","11.Estado.civil","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","21.Albúmina2","22.Glucemia2.mg.dl","23.HbA1C2","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","39.Proteinuria2","40.Proteinuria3","42.Microalbuminuria2","44.Microalbuminuria3","45.ParcialOrina","tfg_before","tfg_change","tfgD_per_month_before","46.Corrected.TFG")
+
+vecsImp<-c("1.Proteinuria1.g/L","2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad", "8.Sexo","9.Nivel.ingresos","11.Estado.civil","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","19.Creatinina2.mg.dl","45.ParcialOrina","tfg_before","tfg_change","tfgD_per_month_before","46.Corrected.TFG")
+
+importantvecsNum<-c("Id",'1.Proteinuria1.g/L',"2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","21.Albúmina2","22.Glucemia2.mg.dl","23.HbA1C2","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","tfgC_per_month_next")# Only one sample in this columns "39.Proteinuria2","40.Proteinuria3","42.Microalbuminuria2","44.Microalbuminuria3"
+cat<-setdiff(vecsImp,importantvecsNum)
+ndf <- df[,importantvecsNum]
+lshap <- lapply(ndf, shapiro.test)
+lres <- t(sapply(lshap, `[`, c("statistic","p.value")))
+lres
+```
+# only LDL colesterol is normal, therefore normal linear models shouldn't be implemented, lets see how many NAs are there
+```{r}
+#sapply(ndf, class)# Every column is numeric
+colSums(!is.na(ndf))
+```
+
+# Generalized linear models
+#seeing the response variable and estimateits family as first aproximation
+```{r}
+library(fitdistrplus)
+ #x <- na.omit(df$"46.Corrected.TFG")
+x <- df$"tfgC_per_month_next"[!is.na(df$"tfgC_per_month_next")]
+plotdist(x, histo=TRUE, demp=TRUE)
+descdist(x)
+```
+
+# Fitting a more complex family distribution
+```{r}
+library(gamlss.dist)
+library(gamlss.add)
+
+fit <- fitDist(x,try.gamlss = TRUE)
+
+summary(fit)
+fit$fits
+```
+
+# Preparing the data for a fit Imputing NA values with random forests:
+
+```{r}
+
+library(mice)
+
+dfTFG<-ndf[complete.cases(df$"tfgC_per_month_next"),]# Dataframe that is only complete TFGs
+# Imputing the data with midastouch
+
+colnames(dfTFG)<-c("Identificacion","Proteinuria_gL","Microalbuminuria_1","HbA1C_1","Creatinuria_1","Creatinina_1","Glucemia_1","Edad","Peso_Kg","Talla_m","IMC","Presion_Art_Sistolica","Presion_Art_Diastolica","Creatinina2_mg_dl","BUN1_mg_d","Albumina_2","Glucemia2_mg_dl","HbA1C2","Calcio_mg_dl","Fosforo_mEq_L_l","PTH_mg_dl","ColesterolTotal_mg_dl","LDLcolest","Colesterol_HDL_mg_dl","Hemoglobina_mg_dl","RCV_Rel_AlbuminuriaCreatinuria","creatinina3_mgdl","tfgC_per_month_next")
+attach(dfTFG)
+imputed_data <-  mice(dfTFG, method="rf")# Random forest method
+full_data <- complete(imputed_data) 
+
+#RCV_Rel_AlbuminuriaCreatinuria and tfgD_per_month_before cannot be imputed
+
+#full_data <- full_data[,completecolumns]
+```
+# Generalized linear model with known distribution (It has to be an exponential function the response variable) as fitted above
+
+```{r}
+
+library(gamlss.dist)
+library(gamlss.add)
+library(gamlss)
+
+
+regglm <- gamlss(`tfgC_per_month_next` ~`Creatinina_1`+ Proteinuria_gL+Microalbuminuria_1+HbA1C_1+Creatinuria_1+Glucemia_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albumina_2+Glucemia2_mg_dl+HbA1C2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Colesterol_HDL_mg_dl+Hemoglobina_mg_dl+creatinina3_mgdl+RCV_Rel_AlbuminuriaCreatinuria, data=full_data, family=TF)
+summary(regglm)
+#compare the coeficcients, they are a little bit different
+regglm$coefficients
+plot(regglm)
+wp(regglm)
+```
+# Adding a random effect per person: The family adjusted doesn't work, so we use nu.fix=TRUE
+
+
+```{r}
+regglmR <- gamlss(`tfgC_per_month_next` ~`Creatinina_1`+ Proteinuria_gL+Microalbuminuria_1+HbA1C_1+Creatinuria_1+Glucemia_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albumina_2+Glucemia2_mg_dl+HbA1C2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Colesterol_HDL_mg_dl+Hemoglobina_mg_dl+creatinina3_mgdl+RCV_Rel_AlbuminuriaCreatinuria+random(factor(Identificacion)), data=full_data, family=TF)
+#plot(regglmR)# see the residuals
+#wp(regglmR) # http://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf page 127
+
+#compare the coeficcients, they are a little bit different
+summary(regglmR)
+## Seeing correlations of the variables
+```
+
+#The model with mixed effects was the best, let's see if the assumptions hold
+
+```{r}
+plot(regglmR)# see the residuals
+wp(regglmR)
+```
+
+# To take out terms of the model and add important interactions with a ChiSquared test:
+```{r}
+library(MASS)
+
+#dropterm(regglmR, test="Chisq") #  http://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf Page 138
+#addterm(regglmR, scope=~.+(Creatinina_1+Peso_Kg+Presion_Art_Sistolica+Fosforo_mEq_L_l+Colesterol_HDL_mg_dl+RCV_Rel_AlbuminuriaCreatinuria)^2, test="Chisq") #adding interaction terms
+
+
+# To force converging one can try many more iterations by  adding: control = gamlss.control(n.cyc = 200)
+```
+
+# BEst model without the non significant terms and with interactions
+```{r}
+# Final model
+mod2<-gamlss(`tfgC_per_month_next` ~`Creatinina_1`+Peso_Kg+Presion_Art_Sistolica+BUN1_mg_d+Albumina_2+Calcio_mg_dl+Fosforo_mEq_L_l+Peso_Kg:Presion_Art_Sistolica+Peso_Kg:RCV_Rel_AlbuminuriaCreatinuria, data=full_data, family=TF,control = gamlss.control(n.cyc = 200))
+#Testing if one takes them out and add interactions in one command
+
+plot(mod2)# see the residuals and check for assumptions
+wp(mod2) # check ranges of the validity of the model
+
+```
+
+
+# To compare models with a generalized AIC metric
+```{r}
+GAIC.table(regglmR, mod2) 
+# Its better the new model
+```
+# One can even make a better model by transforming its independant variables with:
+http://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf
+5.1 Cubic splines, the cs() function . . . . . . . . . . . . . . . . . . . . . . . . . . . 96
+5.2 Varying coefficient, the vc() function . . . . . . . . . . . . . . . . . . . . . . . . 97
+5.3 Penalized splines, the ps() function . . . . . . . . . . . . . . . . . . . . . . . . . 102
+5.4 The loess function lo() . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 106
+5.5 Fractional polynomials, the fp() function
+
+# Validation metrics
+```{r}
+path_data<-"BasedatosRegDerivVal.xlsx"
+df <- read_excel(path_data,col_names=TRUE)
+importantvecsNum<-c("Id",'1.Proteinuria1.g/L',"2.Microalbuminuria1","3.HbA1C.1","4.Creatinuria.1","5.Creatinina.1","6.Glucemia1","7.Edad","13.Peso.Kg","14.Talla.m","15.IMC","16.Presion.Art.Sistolica","17.Presion.Art.Diastolica","19.Creatinina2.mg.dl","20.BUN1.mg.d","21.Albúmina2","22.Glucemia2.mg.dl","23.HbA1C2","24.Calcio.mg.dl","25.Fosforo.mEq.L.l","26.PTH.mg.dl","27.ColesterolTotal.mg.dl","28.LDLcolest","29.Colesterol.HDL.mg.dl","30.Hemoglobina.mg.dl","31.RCV.Rel.AlbuminuriaCreatinuria","36.creatinina3.mgdl","tfgC_per_month_next")
+ndf <- df[,importantvecsNum]
+
+dfTFG2<-ndf[complete.cases(ndf$"tfgC_per_month_next"),]
+
+colnames(dfTFG2)<-c("Identificacion","Proteinuria_gL","Microalbuminuria_1","HbA1C_1","Creatinuria_1","Creatinina_1","Glucemia_1","Edad","Peso_Kg","Talla_m","IMC","Presion_Art_Sistolica","Presion_Art_Diastolica","Creatinina2_mg_dl","BUN1_mg_d","Albumina_2","Glucemia2_mg_dl","HbA1C2","Calcio_mg_dl","Fosforo_mEq_L_l","PTH_mg_dl","ColesterolTotal_mg_dl","LDLcolest","Colesterol_HDL_mg_dl","Hemoglobina_mg_dl","RCV_Rel_AlbuminuriaCreatinuria","creatinina3_mgdl","tfgC_per_month_next")
+attach(dfTFG2)
+# impute the two datasets
+numbers<-nrow(dfTFG2)
+dfTFG2<-rbind(dfTFG,dfTFG2)
+imputed_data <-  mice(dfTFG2, method="rf")# Random forest method
+full_data2 <- complete(imputed_data) 
+
+full_data2 <-tail(full_data2, n =numbers)
+
+response=full_data2[,c("tfgC_per_month_next")]
+#full_data2$tfgC_per_month_next <- NULL
+predicted <- predict(mod2, newdata=full_data2, type = "response")
+
+predicted<-tail(as.vector(predicted),n=numbers)
+response<-tail(as.vector(response),n=numbers)
+
+
+library(caret)
+library(Metrics)
+library(MLmetrics)
+# R native functions
+MAE(predicted, response)
+mse(predicted, response)
+ 
+# caret package functions 
+rmse(predicted, response)
+R2_Score(predicted, response)
+smape(response, predicted)
+```
+
+

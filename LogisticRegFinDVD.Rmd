@@ -1,0 +1,232 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(readxl)
+path_data<-"BasedatClasifS.xlsx" #To do a linear model of the change in the next measure
+df <- read_excel(path_data,col_names=TRUE)
+important_base_columns <-  c('Identificacion','1.Proteinuria1.g/L','2.Microalbuminuria1', '3.HbA1C.1', '4.Creatinuria.1', '5.Creatinina.1',
+       '6.Glucemia1', '7.Edad', '9.Nivel.ingresos',
+       '13.Peso.Kg', '14.Talla.m', '15.IMC', '16.Presion.Art.Sistolica',
+       '17.Presion.Art.Diastolica', '19.Creatinina2.mg.dl',
+       '20.BUN1.mg.d', '21.Albúmina2', '22.Glucemia2.mg.dl', '23.HbA1C2',
+       '24.Calcio.mg.dl', '25.Fosforo.mEq.L.l', '26.PTH.mg.dl',
+       '27.ColesterolTotal.mg.dl', '28.LDLcolest', '29.Colesterol.HDL.mg.dl',
+       '30.Hemoglobina.mg.dl', '31.RCV.Rel.AlbuminuriaCreatinuria',
+       '36.creatinina3.mgdl',
+       "45.ParcialOrina_ACTIVO",           "45.ParcialOrina_INACTIVO",'tfg_before',
+       'tfgD_per_month_before','Falla_renal')#'Proteinuria g/dL' missing the 0
+
+df <- df[,important_base_columns]
+colnames(df)
+
+```
+
+```{r}
+library(mice)
+df<-df[complete.cases(df$"Falla_renal"),]# Dataframe that is only complete fallas renal
+# Imputing the data with midastouch
+
+colnames(df)<-c('Identificacion','Proteinuria1_g_L','Microalbuminuria_1', 'HbA1C_1', 'Creatinuria_1', 'Creatinina_1',
+       'Glucemia_1', 'Edad', 'Nivel_ingresos',
+       'Peso_Kg', 'Talla_m', 'IMC', 'Presion_Art_Sistolica',
+       'Presion_Art_Diastolica', 'Creatinina2_mg_dl',
+       'BUN1_mg_d', 'Albúmina_2', 'Glucemia2_mg_dl', 'HbA1C_2',
+       'Calcio_mg_dl', 'Fosforo_mEq_L_l', 'PTH_mg_dl',
+       'ColesterolTotal_mg_dl', 'LDLcolest', 'Colesterol_HDL_mg_dl',
+       'Hemoglobina_mg_dl', 'RCV_Rel_AlbuminuriaCreatinuria',
+       'creatinina3_mgdl',
+      "tfg_before",                   "tfgD_per_month_before","ParcialOrina_ACTIVO"         ,"ParcialOrina_INACTIVO","Falla_renal")
+attach(df)
+colnames(df)
+imputed_data <-  mice(df, method="rf",print=FALSE)# Random forest method
+full_data <- complete(imputed_data)
+colnames(full_data)<-c('Identificacion','Proteinuria1_g_L','Microalbuminuria_1', 'HbA1C_1', 'Creatinuria_1', 'Creatinina_1',
+       'Glucemia_1', 'Edad', 'Nivel_ingresos',
+       'Peso_Kg', 'Talla_m', 'IMC', 'Presion_Art_Sistolica',
+       'Presion_Art_Diastolica', 'Creatinina2_mg_dl',
+       'BUN1_mg_d', 'Albúmina_2', 'Glucemia2_mg_dl', 'HbA1C_2',
+       'Calcio_mg_dl', 'Fosforo_mEq_L_l', 'PTH_mg_dl',
+       'ColesterolTotal_mg_dl', 'LDLcolest', 'Colesterol_HDL_mg_dl',
+       'Hemoglobina_mg_dl', 'RCV_Rel_AlbuminuriaCreatinuria',
+       'creatinina3_mgdl',
+      "tfg_before",                   "tfgD_per_month_before","ParcialOrina_ACTIVO"         ,"ParcialOrina_INACTIVO","Falla_renal")
+
+```
+
+
+```{r}
+library(gamlss.dist)
+library(gamlss.add)
+library(gamlss)
+library(fitdistrplus)
+x<-df$'Falla_renal'[!is.na(df$"Falla_renal")]
+fit <- fitDist(x,try.gamlss = TRUE)
+x<-as.numeric(x)
+plotdist(x, histo=TRUE, demp=TRUE)
+```
+
+```{r}
+summary(fit)
+```
+# Rescaling the variables so better fit with lmer4
+```{r}
+numcols=c('Proteinuria1_g_L','Microalbuminuria_1', 'HbA1C_1', 'Creatinuria_1', 'Creatinina_1',
+       'Glucemia_1', 'Edad',
+       'Peso_Kg', 'Talla_m', 'IMC', 'Presion_Art_Sistolica',
+       'Presion_Art_Diastolica', 'Creatinina2_mg_dl',
+       'BUN1_mg_d', 'Albúmina_2', 'Glucemia2_mg_dl', 'HbA1C_2',
+       'Calcio_mg_dl', 'Fosforo_mEq_L_l', 'PTH_mg_dl',
+       'ColesterolTotal_mg_dl', 'LDLcolest', 'Colesterol_HDL_mg_dl',
+       'Hemoglobina_mg_dl', 'RCV_Rel_AlbuminuriaCreatinuria',
+       'creatinina3_mgdl', "tfg_before",                  "tfgD_per_month_before")
+
+
+colnames(full_data)<-c('Identificacion','Proteinuria1_g_L','Microalbuminuria_1', 'HbA1C_1', 'Creatinuria_1', 'Creatinina_1',
+       'Glucemia_1', 'Edad', 'Nivel_ingresos',
+       'Peso_Kg', 'Talla_m', 'IMC', 'Presion_Art_Sistolica',
+       'Presion_Art_Diastolica', 'Creatinina2_mg_dl',
+       'BUN1_mg_d', 'Albúmina_2', 'Glucemia2_mg_dl', 'HbA1C_2',
+       'Calcio_mg_dl', 'Fosforo_mEq_L_l', 'PTH_mg_dl',
+       'ColesterolTotal_mg_dl', 'LDLcolest', 'Colesterol_HDL_mg_dl',
+       'Hemoglobina_mg_dl', 'RCV_Rel_AlbuminuriaCreatinuria',
+       'creatinina3_mgdl',"ParcialOrina_ACTIVO"         ,"ParcialOrina_INACTIVO", "tfg_before",                   "tfgD_per_month_before","Falla_renal")
+
+full_dataS <- full_data
+full_dataS[,numcols] <- scale(full_dataS[,numcols])
+
+```
+
+# LOgistic generalized model with mixed effects
+```{r}
+library(lme4)
+full_data$Microalbuminuria_3<-NULL
+attach(full_dataS)
+mod2<-glmer(`Falla_renal` ~`Creatinina_1`+ `Proteinuria1_g_L`+Microalbuminuria_1+HbA1C_1+Creatinuria_1+Creatinina_1+Glucemia_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albúmina_2+Glucemia2_mg_dl+HbA1C_2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Colesterol_HDL_mg_dl+Hemoglobina_mg_dl+creatinina3_mgdl+RCV_Rel_AlbuminuriaCreatinuria+tfgD_per_month_before+ (1|factor(Identificacion)),family=binomial, data=full_data,control=glmerControl(optimizer = "bobyqa",optCtrl = list(maxfun = 1000000)))#glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000))
+summary(mod2)# Maybe as.factor Falla renal
+plot(mod2)
+```
+# model witout optimizer
+```{r}
+mod3<-glmer(as.factor(`Falla_renal`) ~`Creatinina_1`+ `Proteinuria1_g_L`+Microalbuminuria_1+HbA1C_1+Creatinuria_1+Creatinina_1+Glucemia_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albúmina_2+Glucemia2_mg_dl+HbA1C_2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Colesterol_HDL_mg_dl+Hemoglobina_mg_dl+creatinina3_mgdl+RCV_Rel_AlbuminuriaCreatinuria+tfgD_per_month_before+ (1|factor(Identificacion)),family=binomial, data=full_dataS,control=glmerControl(optCtrl = list(maxfun = 100000)))#glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000))
+summary(mod3)# Maybe as.factor Falla renal
+plot(mod3)
+```
+
+
+## Mod3 is like the best model, Glucemia and TFG change before and intercept
+
+# Getting the mod3 to a better AIC and converging it
+```{r}
+library(lme4)
+attach(full_dataS)
+mod3R<-glmer(as.factor(`Falla_renal`) ~`Creatinina_1`+ Microalbuminuria_1+HbA1C_1+Creatinuria_1+Creatinina_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+BUN1_mg_d+Albúmina_2+Glucemia2_mg_dl+HbA1C_2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Hemoglobina_mg_dl+creatinina3_mgdl+tfgD_per_month_before+ (1|factor(Identificacion)),family=binomial, data=full_dataS,control=glmerControl(optCtrl = list(maxfun = 100000)))#glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000))
+summary(mod3R)# Maybe as.factor Falla renal
+plot(mod3R)
+anova(mod3R,mod3)
+# By seeing the summary of the 2 mod3 one can conpare their BIC and AIC
+# Maybe with  AIC(logLik(fm1)) too
+```
+
+# Validation predictions for mod3
+```{r}
+library(readxl)
+library(mice)
+path_data<-"BasedatClasifVal.xlsx"
+df2 <- read_excel(path_data,col_names=TRUE)
+important_base_columns <-  c('Identificacion','1.Proteinuria1.g/L','2.Microalbuminuria1', '3.HbA1C.1', '4.Creatinuria.1', '5.Creatinina.1',
+       '6.Glucemia1', '7.Edad', '9.Nivel.ingresos',
+       '13.Peso.Kg', '14.Talla.m', '15.IMC', '16.Presion.Art.Sistolica',
+       '17.Presion.Art.Diastolica', '19.Creatinina2.mg.dl',
+       '20.BUN1.mg.d', '21.Albúmina2', '22.Glucemia2.mg.dl', '23.HbA1C2',
+       '24.Calcio.mg.dl', '25.Fosforo.mEq.L.l', '26.PTH.mg.dl',
+       '27.ColesterolTotal.mg.dl', '28.LDLcolest', '29.Colesterol.HDL.mg.dl',
+       '30.Hemoglobina.mg.dl', '31.RCV.Rel.AlbuminuriaCreatinuria',
+       '36.creatinina3.mgdl',
+       '44.Microalbuminuria3',"45.ParcialOrina_ACTIVO",           "45.ParcialOrina_INACTIVO",'tfg_before',
+       'tfgD_per_month_before','Falla_renal')#'Proteinuria g/dL' missing the 0
+
+df2 <- df2[,important_base_columns]
+colnames(df2)
+
+colnames(df2)<-c('Identificacion','Proteinuria1_g_L','Microalbuminuria_1', 'HbA1C_1', 'Creatinuria_1', 'Creatinina_1',
+       'Glucemia_1', 'Edad', 'Nivel_ingresos',
+       'Peso_Kg', 'Talla_m', 'IMC', 'Presion_Art_Sistolica',
+       'Presion_Art_Diastolica', 'Creatinina2_mg_dl',
+       'BUN1_mg_d', 'Albúmina_2', 'Glucemia2_mg_dl', 'HbA1C_2',
+       'Calcio_mg_dl', 'Fosforo_mEq_L_l', 'PTH_mg_dl',
+       'ColesterolTotal_mg_dl', 'LDLcolest', 'Colesterol_HDL_mg_dl',
+       'Hemoglobina_mg_dl', 'RCV_Rel_AlbuminuriaCreatinuria',
+       'creatinina3_mgdl',
+       'Microalbuminuria_3', "tfg_before",                   "tfgD_per_month_before","ParcialOrina_ACTIVO"         ,"ParcialOrina_INACTIVO","Falla_renal")
+dfC<-df2[complete.cases(df2$"Falla_renal"),]
+numbers<-nrow(dfC)
+dfC$Microalbuminuria_3<-NULL
+dfC<-rbind(df,dfC)
+imputed_data <-  mice(dfC, method="rf",print=FALSE)# Random forest method
+## Warning: Number of logged events: 2
+full_data2 <- complete(imputed_data) 
+full_data2 <- tail(full_data2,n=numbers)
+response=full_data2[,c("Falla_renal")]
+#full_data2$Identificacion<-NULL
+# Rescale
+full_data2S <- full_data2
+full_data2S[,numcols] <- scale(full_data2S[,numcols])
+full_data2S$Microalbuminuria_3<-NULL
+predicted <- predict(mod3, newdata=full_data2S, type = "response",re.form=~0)
+# The re form acknowleges that there are new subjects in our prediction which we cannot adhere the las random effects
+
+#Metrics accurracy ROC, precision and confusion matrix
+
+library(ROCit)
+measure<-measureit(score=predicted,class=response,measure = c("ACC","SENS","FSCR"))
+measure
+
+rocit_emp<-rocit(score=predicted,class=response,method="emp")
+summary(rocit_emp)
+plot(rocit_emp)
+```
+
+# Risk ratio form thresholds of the past dataframe
+
+```{r}
+#This is with the 0.4 threshold
+library(epitools)
+ORtable<-matrix(c(14,337,13,512),nrow = 2, ncol = 2)
+RR<-riskratio.wald(ORtable)
+RR
+
+```
+
+# Risk ratio
+```{r}
+modR3<-glmer(as.factor(`Falla_renal`) ~`Creatinina_1`+ `Proteinuria1_g_L`+Microalbuminuria_1+HbA1C_1+Creatinuria_1+Creatinina_1+Glucemia_1+Edad+Peso_Kg+Talla_m+IMC+Presion_Art_Sistolica+Presion_Art_Diastolica+Creatinina2_mg_dl+BUN1_mg_d+Albúmina_2+Glucemia2_mg_dl+HbA1C_2+Calcio_mg_dl+Fosforo_mEq_L_l+PTH_mg_dl+ColesterolTotal_mg_dl+LDLcolest+Colesterol_HDL_mg_dl+Hemoglobina_mg_dl+creatinina3_mgdl+RCV_Rel_AlbuminuriaCreatinuria+tfgD_per_month_before+ (1|factor(Identificacion)),binomial(link = "logit"), data=full_dataS,control=glmerControl(optCtrl = list(maxfun = 100000)))#glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000))
+summary(modR3)# Maybe as.factor Falla renal
+plot(modR3)
+```
+# validation metrics for this new model with logit
+```{r}
+predictedR <- predict(modR3, newdata=full_data2S, type = "response",re.form=~0)
+# The re form acknowleges that there are new subjects in our prediction which we cannot adhere the las random effects
+
+#Metrics accurracy ROC, precision and confusion matrix
+
+library(ROCit)
+measure<-measureit(score=predictedR,class=response,measure = c("ACC","SENS","FSCR"))
+measure
+
+rocit_empR<-rocit(score=predictedR,class=response,method="emp")
+summary(rocit_empR)
+plot(rocit_empR)
+```
+
+
